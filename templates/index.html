@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Posture Detection</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .video-container {
+            aspect-ratio: 16/9;
+            background: #1a1a1a;
+            border-radius: 1rem;
+            overflow: hidden;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            max-height: 70vh;
+        }
+        .video-feed {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        .controls-container {
+            -webkit-backdrop-filter: blur(10px);
+            backdrop-filter: blur(10px);
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+        select {
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+            background-position: right 0.5rem center;
+            background-repeat: no-repeat;
+            background-size: 1.5em 1.5em;
+            padding-right: 2.5rem;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+        }
+        .credits {
+            background-color: rgba(0, 0, 0, 0.6);
+            border-radius: 1rem;
+            padding: 0.75rem 1.5rem;
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+        }
+        .credit-link {
+            color: inherit;
+            text-decoration: none;
+            transition: color 0.2s ease;
+            padding: 0.1rem 0.3rem;
+            border-radius: 0.25rem;
+        }
+        .credit-link:hover {
+            color: #a78bfa;
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+        .main-content {
+            flex: 1;
+        }
+        @media (max-width: 640px) {
+            .video-container {
+                aspect-ratio: 4/3;
+                max-height: 50vh;
+            }
+            .credits {
+                font-size: 0.875rem;
+                padding: 0.5rem 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="gradient-bg">
+        <div class="main-content container mx-auto px-4 py-8">
+            <!-- Header -->
+            <div class="text-center mb-8 sm:mb-12">
+                <h1 class="text-3xl sm:text-4xl font-bold mb-3 sm:mb-4 text-white">Posture Detection</h1>
+                <p class="text-base sm:text-lg text-gray-200">Monitor and improve your posture in real-time</p>
+            </div>
+
+            <!-- Main Content -->
+            <div class="max-w-4xl mx-auto">
+                <!-- Controls -->
+                <div class="controls-container mb-4 sm:mb-6 p-4 sm:p-6 rounded-lg">
+                    <div class="flex flex-col sm:flex-row items-center justify-between gap-4">
+                        <div class="flex items-center gap-4 w-full sm:w-auto">
+                            <label for="camera-select" class="text-sm font-medium text-white">Camera Source:</label>
+                            <select id="camera-select" class="flex-grow sm:flex-grow-0 bg-white bg-opacity-10 border border-gray-300 border-opacity-20 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 text-white">
+                                <option value="0">Default Camera</option>
+                                <option value="1">External Camera</option>
+                            </select>
+                        </div>
+                        <button onclick="startCamera()" class="w-full sm:w-auto px-6 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-transparent text-white">
+                            Start Detection
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Debug Info -->
+                <div id="debug-info" class="mb-4 p-4 bg-black bg-opacity-50 rounded-lg text-sm text-white">
+                    Camera Status: <span id="camera-status">Initializing...</span>
+                </div>
+
+                <!-- Video Feed -->
+                <div class="video-container mb-4 sm:mb-6">
+                    <img id="video-feed" class="video-feed" alt="Live video feed of posture detection">
+                </div>
+
+                <!-- Status Indicator -->
+                <div class="mt-4 sm:mt-6 text-center">
+                    <div id="connection-status" class="inline-flex items-center px-4 py-2 rounded-full bg-yellow-500 bg-opacity-20">
+                        <div class="w-2 h-2 rounded-full bg-yellow-500 mr-2 animate-pulse"></div>
+                        <span class="text-sm font-medium text-yellow-300">Connecting to camera...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer Credits -->
+        <div class="w-full text-center py-4">
+            <div class="credits inline-block mx-auto text-white">
+                © | Made with <span class="text-red-500">♥</span> by 
+                <a href="https://github.com/tanishpoddar" target="_blank" rel="noopener noreferrer" class="credit-link">Tanish Poddar</a>,
+                <a href="https://github.com/Ananya020" target="_blank" rel="noopener noreferrer" class="credit-link">Ananya Agarwal</a>,
+                <a href="https://github.com/yourusername3" target="_blank" rel="noopener noreferrer" class="credit-link">Nityanand Kumar</a> &
+                <a href="https://github.com/yourusername4" target="_blank" rel="noopener noreferrer" class="credit-link">Swastika Ray</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const videoFeed = document.getElementById('video-feed');
+        const cameraStatus = document.getElementById('camera-status');
+        const connectionStatus = document.getElementById('connection-status');
+        let isStreaming = false;
+
+        function updateStatus(message, type = 'info') {
+            cameraStatus.textContent = message;
+            const statusDiv = document.getElementById('connection-status');
+            const colors = {
+                'info': 'yellow',
+                'success': 'green',
+                'error': 'red'
+            };
+            const color = colors[type];
+            statusDiv.className = `inline-flex items-center px-4 py-2 rounded-full bg-${color}-500 bg-opacity-20`;
+            statusDiv.innerHTML = `
+                <div class="w-2 h-2 rounded-full bg-${color}-500 mr-2 animate-pulse"></div>
+                <span class="text-sm font-medium text-${color}-300">${message}</span>
+            `;
+        }
+
+        function startCamera() {
+            const cameraIndex = document.getElementById('camera-select').value;
+            updateStatus('Connecting to camera...', 'info');
+            
+            const button = document.querySelector('button');
+            button.innerHTML = '<span class="inline-block animate-spin mr-2">↻</span>Loading...';
+            
+            try {
+                if (videoFeed.src) {
+                    videoFeed.src = '';
+                }
+
+                const timestamp = new Date().getTime();
+                videoFeed.src = `/video_feed/${cameraIndex}?t=${timestamp}`;
+                
+                videoFeed.onload = () => {
+                    button.innerHTML = 'Start Detection';
+                    updateStatus('Camera connected', 'success');
+                    isStreaming = true;
+                };
+
+                videoFeed.onerror = (error) => {
+                    console.error('Video feed error:', error);
+                    button.innerHTML = 'Start Detection';
+                    updateStatus('Failed to connect to camera', 'error');
+                    isStreaming = false;
+                };
+
+            } catch (error) {
+                console.error('Error starting camera:', error);
+                button.innerHTML = 'Start Detection';
+                updateStatus('Error: ' + error.message, 'error');
+            }
+        }
+
+        window.onload = function() {
+            startCamera();
+        }
+
+        setInterval(() => {
+            if (isStreaming && videoFeed.naturalWidth === 0) {
+                updateStatus('Connection lost - attempting to reconnect...', 'error');
+                isStreaming = false;
+            }
+        }, 5000);
+    </script>
+</body>
+</html>
