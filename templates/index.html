@@ -19,15 +19,11 @@
             overflow: hidden;
             box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
             max-height: 70vh;
-            position: relative;
         }
         .video-feed {
             width: 100%;
             height: 100%;
             object-fit: contain;
-        }
-        #canvas {
-            display: none;
         }
         .controls-container {
             -webkit-backdrop-filter: blur(10px);
@@ -43,16 +39,6 @@
             -webkit-appearance: none;
             -moz-appearance: none;
             appearance: none;
-        }
-        .stats-overlay {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            color: white;
-            background-color: rgba(0, 0, 0, 0.5);
-            padding: 10px;
-            border-radius: 5px;
-            font-family: monospace;
         }
         .credits {
             background-color: rgba(0, 0, 0, 0.6);
@@ -147,13 +133,8 @@
     </div>
 
     <script>
-        const videoFeed = document.getElementById('video-feed');
-        const cameraStatus = document.getElementById('camera-status');
-        const connectionStatus = document.getElementById('connection-status');
-        let isStreaming = false;
-
         function updateStatus(message, type = 'info') {
-            cameraStatus.textContent = message;
+            const cameraStatus = document.getElementById('camera-status');
             const statusDiv = document.getElementById('connection-status');
             const colors = {
                 'info': 'yellow',
@@ -161,58 +142,131 @@
                 'error': 'red'
             };
             const color = colors[type];
+            
+            // Update debug info
+            cameraStatus.textContent = message;
+            
+            // Update status indicator
             statusDiv.className = `inline-flex items-center px-4 py-2 rounded-full bg-${color}-500 bg-opacity-20`;
             statusDiv.innerHTML = `
                 <div class="w-2 h-2 rounded-full bg-${color}-500 mr-2 animate-pulse"></div>
                 <span class="text-sm font-medium text-${color}-300">${message}</span>
             `;
         }
+        const videoElement = document.createElement('video');
+        const canvasElement = document.createElement('canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        let stream = null;
+        let isProcessing = false;
 
-        function startCamera() {
+        async function startCamera() {
             const cameraIndex = document.getElementById('camera-select').value;
             updateStatus('Connecting to camera...', 'info');
-            
+    
             const button = document.querySelector('button');
             button.innerHTML = '<span class="inline-block animate-spin mr-2">↻</span>Loading...';
+    
+            try {
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+            }
+
+            stream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                        deviceId: cameraIndex !== '0' ? { exact: cameraIndex } : undefined
+                }
+            });
+
+            videoElement.srcObject = stream;
+            videoElement.play();
+
+        // Set canvas size to match video
+            videoElement.onloadedmetadata = () => {
+                canvasElement.width = videoElement.videoWidth;
+                canvasElement.height = videoElement.videoHeight;
+                button.innerHTML = 'Start Detection';
+                updateStatus('Camera connected', 'success');
+                startFrameProcessing();
+            };
+
+        } catch (error) {
+            console.error('Error starting camera:', error);
+            button.innerHTML = 'Start Detection';
+            updateStatus('Error: ' + error.message, 'error');
+        }
+    }
+
+        async function processFrame() {
+            if (!stream || isProcessing) return;
             
             try {
-                if (videoFeed.src) {
-                    videoFeed.src = '';
+                isProcessing = true;
+                
+                // Draw current frame to canvas
+                canvasCtx.drawImage(videoElement, 0, 0);
+                
+                // Get frame data as base64
+                const frameData = canvasElement.toDataURL('image/jpeg', 0.8);
+                
+                // Send to server
+                const response = await fetch('/process_frame', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ frame: frameData })
+                });
+
+                if (!response.ok) throw new Error('Server processing failed');
+
+                const result = await response.json();
+                
+                // Update video feed with processed frame
+                const videoFeed = document.getElementById('video-feed');
+                videoFeed.src = result.processed_frame;
+                
+                // Update posture status if provided
+                if (result.posture_status) {
+                    updateStatus(result.posture_status, 
+                        result.posture_status === 'Good' ? 'success' : 'error');
                 }
 
-                const timestamp = new Date().getTime();
-                videoFeed.src = `/video_feed/${cameraIndex}?t=${timestamp}`;
-                
-                videoFeed.onload = () => {
-                    button.innerHTML = 'Start Detection';
-                    updateStatus('Camera connected', 'success');
-                    isStreaming = true;
-                };
-
-                videoFeed.onerror = (error) => {
-                    console.error('Video feed error:', error);
-                    button.innerHTML = 'Start Detection';
-                    updateStatus('Failed to connect to camera', 'error');
-                    isStreaming = false;
-                };
-
             } catch (error) {
-                console.error('Error starting camera:', error);
-                button.innerHTML = 'Start Detection';
-                updateStatus('Error: ' + error.message, 'error');
+                console.error('Frame processing error:', error);
+                updateStatus('Processing error', 'error');
+            } finally {
+                isProcessing = false;
             }
         }
 
-        window.onload = function() {
-            startCamera();
+        function startFrameProcessing() {
+            setInterval(processFrame, 100); // Process every 100ms (10 FPS)
         }
 
-        setInterval(() => {
-            if (isStreaming && videoFeed.naturalWidth === 0) {
-                updateStatus('Connection lost - attempting to reconnect...', 'error');
-                isStreaming = false;
+        // Populate camera select with available devices
+        async function populateCameraSelect() {
+            const select = document.getElementById('camera-select');
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const videoDevices = devices.filter(device => device.kind === 'videoinput');
+                
+                select.innerHTML = ''; // Clear existing options
+                videoDevices.forEach((device, index) => {
+                    const option = document.createElement('option');
+                    option.value = device.deviceId;
+                    option.text = device.label || `Camera ${index + 1}`;
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error getting camera devices:', error);
             }
-        }, 5000);
+        }
+
+        // Initialize when page loads
+        window.onload = async function() {
+            await populateCameraSelect();
+            await startCamera();
+        }
     </script>
 </body>
 </html>
