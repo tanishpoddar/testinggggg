@@ -19,11 +19,15 @@
             overflow: hidden;
             box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
             max-height: 70vh;
+            position: relative;
         }
         .video-feed {
             width: 100%;
             height: 100%;
             object-fit: contain;
+        }
+        #canvas {
+            display: none;
         }
         .controls-container {
             -webkit-backdrop-filter: blur(10px);
@@ -39,6 +43,16 @@
             -webkit-appearance: none;
             -moz-appearance: none;
             appearance: none;
+        }
+        .stats-overlay {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
         }
         .credits {
             background-color: rgba(0, 0, 0, 0.6);
