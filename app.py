@@ -6,14 +6,18 @@ import math as m
 import mediapipe as mp
 from datetime import datetime
 import re
+from werkzeug.serving import WSGIServer
+import gc
+import os
 
 app = Flask(__name__)
 
-# Initialize MediaPipe Pose
+# Initialize MediaPipe Pose with lower resource usage
 mp_pose = mp.solutions.pose
 pose = mp_pose.Pose(
     min_detection_confidence=0.5,
-    min_tracking_confidence=0.5
+    min_tracking_confidence=0.5,
+    model_complexity=0  # Use simpler model to reduce memory usage
 )
 
 class PostureTracker:
@@ -22,15 +26,20 @@ class PostureTracker:
         self.bad_frames = 0
         self.start_time = datetime.now()
         self.fps = 10
+        
+    def reset(self):
+        self.good_frames = 0
+        self.bad_frames = 0
+        self.start_time = datetime.now()
 
 def findDistance(x1, y1, x2, y2):
     return m.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
 
 def findAngle(x1, y1, x2, y2):
     theta = m.acos((y2 - y1) * (-y1) / (m.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2) * y1))
-    degree = int((180 / m.pi) * theta)
-    return degree
+    return int((180 / m.pi) * theta)
 
+# Create posture tracker instance
 posture_tracker = PostureTracker()
 
 @app.route('/')
@@ -52,6 +61,9 @@ def process_frame():
         frame_arr = np.frombuffer(frame_bytes, np.uint8)
         frame = cv2.imdecode(frame_arr, cv2.IMREAD_COLOR)
         
+        # Resize frame to reduce memory usage
+        frame = cv2.resize(frame, (640, 480))
+        
         # Convert BGR to RGB for MediaPipe
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         
@@ -68,16 +80,19 @@ def process_frame():
             # Get key points
             l_shldr_x = int(lm[lmPose.LEFT_SHOULDER].x * w)
             l_shldr_y = int(lm[lmPose.LEFT_SHOULDER].y * h)
-            r_shldr_x = int(lm[lmPose.RIGHT_SHOULDER].x * w)
-            r_shldr_y = int(lm[lmPose.RIGHT_SHOULDER].y * h)
             l_ear_x = int(lm[lmPose.LEFT_EAR].x * w)
             l_ear_y = int(lm[lmPose.LEFT_EAR].y * h)
             l_hip_x = int(lm[lmPose.LEFT_HIP].x * w)
             l_hip_y = int(lm[lmPose.LEFT_HIP].y * h)
             
-            # Draw landmarks and connections
+            # Draw landmarks and connections (simplified)
             mp.solutions.drawing_utils.draw_landmarks(
-                frame, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
+                frame, 
+                results.pose_landmarks,
+                mp_pose.POSE_CONNECTIONS,
+                landmark_drawing_spec=mp.solutions.drawing_utils.DrawingSpec(thickness=1, circle_radius=1),
+                connection_drawing_spec=mp.solutions.drawing_utils.DrawingSpec(thickness=1)
+            )
             
             # Calculate angles
             neck_inclination = findAngle(l_shldr_x, l_shldr_y, l_ear_x, l_ear_y)
@@ -97,9 +112,14 @@ def process_frame():
                 cv2.putText(frame, "Bad Posture", (10, 30), 
                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
         
-        # Convert processed frame back to base64
-        _, buffer = cv2.imencode('.jpg', frame)
+        # Convert processed frame back to base64 with lower quality
+        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 80]
+        _, buffer = cv2.imencode('.jpg', frame, encode_param)
         processed_frame = 'data:image/jpeg;base64,' + base64.b64encode(buffer).decode('utf-8')
+        
+        # Clean up to prevent memory leaks
+        del frame_rgb, frame, results
+        gc.collect()
         
         return jsonify({
             'processed_frame': processed_frame,
@@ -107,7 +127,14 @@ def process_frame():
         })
         
     except Exception as e:
+        # Reset tracker on error
+        posture_tracker.reset()
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    # Get port from environment variable (Render sets this)
+    port = int(os.environ.get('PORT', 5000))
+    
+    # Production WSGI server
+    http_server = WSGIServer(('0.0.0.0', port), app)
+    http_server.serve_forever()
